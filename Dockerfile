@@ -1,29 +1,41 @@
-# Use a specific, slim Python version for a smaller image size
-FROM python:3.11-slim
+# --- Stage 1: The Builder ---
+# This stage installs all dependencies and downloads the model
+FROM python:3.11-slim as builder
 
-# Create a non-root user for better security
+# Set up user and environment
 RUN useradd -m -u 1000 user
 USER user
-
-# Set the working directory and environment path for the new user
 ENV PATH="/home/user/.local/bin:$PATH"
 WORKDIR /app
-
-# Set the Hugging Face cache directory to a writable location
 ENV HF_HOME /app/cache
 
-# Copy and install dependencies
+# Copy only the requirements file and install dependencies
 COPY --chown=user ./requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-# --- ADD THIS COMMAND TO PRE-DOWNLOAD THE MODEL ---
+# Download the sentence transformer model into the cache
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
-# Copy all your application files
+# --- Stage 2: The Final Application ---
+# This stage creates the final, clean image
+FROM python:3.11-slim
+
+# Set up the same user
+RUN useradd -m -u 1000 user
+USER user
+WORKDIR /app
+
+# Copy the installed packages and the model cache from the builder stage
+COPY --chown=user --from=builder /home/user/.local /home/user/.local
+COPY --chown=user --from=builder /app/cache /app/cache
+
+# Set the environment variables again for the final stage
+ENV PATH="/home/user/.local/bin:$PATH"
+ENV HF_HOME /app/cache
+
+# Copy your application code and data
 COPY --chown=user . /app
 
-# Expose the port Gradio will run on
+# Expose the port and run the app
 EXPOSE 7860
-
-# The command to run your Gradio app
 CMD ["python", "app.py"]
