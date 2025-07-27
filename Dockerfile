@@ -1,23 +1,28 @@
-# Use an official Python runtime as a parent image
+# Use a specific, slim Python version for a smaller image size
 FROM python:3.11-slim
 
-# Set the working directory in the container
+# Create a non-root user for better security
+RUN useradd -m -u 1000 user
+USER user
+
+# Set the working directory and environment path for the new user
+ENV PATH="/home/user/.local/bin:$PATH"
 WORKDIR /app
 
-# Copy the file with the list of dependencies
-COPY requirements.txt .
+# --- ADD THIS LINE ---
+# Set the Hugging Face cache directory to a writable location inside the app folder
+ENV HF_HOME /app/cache
+# --------------------
 
-# Install any needed packages specified in requirements.txt
-# We add --no-cache-dir to reduce image size
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy and install dependencies
+COPY --chown=user ./requirements.txt requirements.txt
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-# Copy the rest of the application's code into the container
-COPY . .
+# Copy all your application files
+COPY --chown=user . /app
 
-# Make port 7860 available to the world outside this container
-# This is the default port Gradio runs on
+# Expose the port Gradio will run on
 EXPOSE 7860
 
-# Define the command to run your app
-# This command runs when the container starts
+# The command to run your Gradio app
 CMD ["python", "app.py"]
