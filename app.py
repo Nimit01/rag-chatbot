@@ -2,15 +2,10 @@ import os
 import gradio as gr
 from dotenv import load_dotenv
 
-# Redirect Hugging Face cache to writable directory
-os.environ['HF_HOME'] = '/app/cache'
-os.environ['TRANSFORMERS_CACHE'] = '/app/cache/huggingface'
-os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/app/cache/sentence_transformers'
-
 # --- Load environment ---
 load_dotenv()
 if not os.getenv("GOOGLE_API_KEY"):
-    raise ValueError("Error: GOOGLE_API_KEY not found. Please set it in your .env file.")
+    raise ValueError("Error: GOOGLE_API_KEY not found. Please set it as a secret in your deployment environment.")
 
 # --- LangChain imports ---
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -18,33 +13,21 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 
 # --- Configuration ---
 VECTOR_DB_PATH = "vectorstore/db_faiss"
-EMBEDDINGS_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDINGS_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2" # Using the full name is best practice
 LLM_MODEL_NAME = "gemini-1.5-flash-latest"
-DOCUMENTS_PATH = "documents"  # Folder to store PDFs
 
-def build_or_load_vector_database():
-    """Builds or loads the FAISS vector database based on PDF documents."""
+def load_prebuilt_database():
+    """Loads the pre-built FAISS vector database."""
+    if not os.path.exists(VECTOR_DB_PATH):
+        raise FileNotFoundError(f"Vector database not found at {VECTOR_DB_PATH}. Ensure it was included in the build.")
+    
+    print("✅ Loading existing vector database...")
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDINGS_MODEL_NAME, model_kwargs={'device': 'cpu'})
-
-    if os.path.exists(VECTOR_DB_PATH):
-        print("✅ Loading existing vector database...")
-        db = FAISS.load_local(VECTOR_DB_PATH, embeddings, allow_dangerous_deserialization=True)
-    else:
-        print("📂 Vector database not found. Scanning documents...")
-        if not os.path.exists(DOCUMENTS_PATH):
-            raise FileNotFoundError(f"'{DOCUMENTS_PATH}' folder not found. Add your PDFs there.")
-        loader = DirectoryLoader(DOCUMENTS_PATH, glob="**/*.pdf", loader_cls=PyPDFLoader)
-        documents = loader.load()
-        if not documents:
-            raise ValueError("No documents found in the 'documents' folder.")
-        print(f"📄 Loaded {len(documents)} documents. Building vector DB...")
-        db = FAISS.from_documents(documents, embeddings)
-        db.save_local(VECTOR_DB_PATH)
-        print("✅ Vector database created and saved.")
+    db = FAISS.load_local(VECTOR_DB_PATH, embeddings, allow_dangerous_deserialization=True)
+    print("✅ Database loaded successfully.")
     return db
 
 def setup_qa_chain(db):
@@ -73,13 +56,9 @@ def setup_qa_chain(db):
 
 # --- Start Application ---
 print("🚀 Initializing chatbot...")
-try:
-    db = build_or_load_vector_database()
-    qa_chain = setup_qa_chain(db)
-    print("🤖 Chatbot is ready.")
-except Exception as e:
-    print(f"❌ Error during startup: {e}")
-    raise
+db = load_prebuilt_database()
+qa_chain = setup_qa_chain(db)
+print("🤖 Chatbot is ready.")
 
 def chatbot_response(message, history):
     """The core chatbot function for Gradio."""
@@ -98,5 +77,9 @@ ui = gr.ChatInterface(
     chatbot=gr.Chatbot(type="messages")
 )
 
+# --- Production Launch ---
 if __name__ == "__main__":
-    ui.launch(share=True)
+    # Get the port from the environment variable, default to 7860
+    port = int(os.environ.get("PORT", 7860))
+    # Launch the app to be accessible on the network
+    ui.launch(server_name="0.0.0.0", server_port=port)
