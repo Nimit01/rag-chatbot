@@ -9,14 +9,15 @@ USER user
 ENV PATH="/home/user/.local/bin:$PATH"
 WORKDIR /app
 
-# --- ADD THIS LINE ---
-# Set the Hugging Face cache directory to a writable location inside the app folder
+# Set the Hugging Face cache directory to a writable location
 ENV HF_HOME /app/cache
-# --------------------
 
 # Copy and install dependencies
 COPY --chown=user ./requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+# --- ADD THIS COMMAND TO PRE-DOWNLOAD THE MODEL ---
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Copy all your application files
 COPY --chown=user . /app
