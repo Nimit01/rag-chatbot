@@ -1,0 +1,9 @@
+# Ignore Python's virtual environment
+venv/
+
+# Ignore the local vector database
+vectorstore/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
